@@ -82,19 +82,42 @@ const StudentDashboard = () => {
     toast.success('Achievement added!');
   };
 
-  const handleAddDocument = (e: React.FormEvent) => {
+  const handleAddDocument = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedFile && !docForm.fileUrl) {
+      toast.error('Please select a file to upload');
+      return;
+    }
+
+    setUploading(true);
+    let fileUrl = docForm.fileUrl || '#';
+    let fileName = docForm.name || selectedFile?.name || 'Untitled';
+
+    if (selectedFile) {
+      // Convert file to base64 data URL for local storage
+      fileUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(selectedFile);
+      });
+    }
+
     const doc: StudentDocument = {
       id: crypto.randomUUID(),
       studentId: student.id,
       type: docForm.type,
-      name: docForm.name,
-      fileUrl: docForm.fileUrl || '#',
+      name: fileName,
+      fileUrl,
       uploadedAt: new Date().toISOString(),
       verified: false,
     };
     addDocument(doc);
     setDocForm({ type: '' as DocumentType, name: '', fileUrl: '' });
+    setSelectedFile(null);
+    // Reset the file input
+    const fileInput = document.getElementById('doc-file-input') as HTMLInputElement;
+    if (fileInput) fileInput.value = '';
+    setUploading(false);
     toast.success('Document uploaded!');
   };
 
