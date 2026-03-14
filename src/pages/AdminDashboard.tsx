@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Shield, LogOut, Search, CheckCircle, XCircle, Users, Clock, UserCheck, FileText, Trophy } from 'lucide-react';
+import { Shield, LogOut, Search, CheckCircle, XCircle, Users, Clock, UserCheck, FileText, Trophy, Eye, Download } from 'lucide-react';
 import { Student } from '@/types';
 import { toast } from 'sonner';
 
