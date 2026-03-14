@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, LogOut, User, FileText, Trophy } from 'lucide-react';
+import { Users, LogOut, User, FileText, Trophy, Eye, Download } from 'lucide-react';
 
 const achievementTypeLabels: Record<string, string> = {
   hackathon: 'Hackathon', internship: 'Internship', research: 'Research',
