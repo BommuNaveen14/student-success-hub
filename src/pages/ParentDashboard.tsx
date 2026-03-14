@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, LogOut, User, FileText, Trophy } from 'lucide-react';
+import { Users, LogOut, User, FileText, Trophy, Eye, Download } from 'lucide-react';
 
 const achievementTypeLabels: Record<string, string> = {
   hackathon: 'Hackathon', internship: 'Internship', research: 'Research',
@@ -101,6 +101,37 @@ const ParentDashboard = () => {
                       </div>
                       <Badge variant="secondary" className="text-xs">{docTypeLabels[doc.type] || doc.type}</Badge>
                       <p className="text-xs text-muted-foreground mt-1">{new Date(doc.uploadedAt).toLocaleDateString()}</p>
+                      {doc.fileUrl && doc.fileUrl !== '#' && (
+                        <div className="flex gap-1 mt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => {
+                              const w = window.open();
+                              if (w) {
+                                w.document.write(`<iframe src="${doc.fileUrl}" style="width:100%;height:100%;border:none;" />`);
+                                w.document.title = doc.name;
+                              }
+                            }}
+                          >
+                            <Eye className="h-3 w-3 mr-1" /> View
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => {
+                              const a = document.createElement('a');
+                              a.href = doc.fileUrl;
+                              a.download = doc.name;
+                              a.click();
+                            }}
+                          >
+                            <Download className="h-3 w-3 mr-1" /> Download
+                          </Button>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 ))}
