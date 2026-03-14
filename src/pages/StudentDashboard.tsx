@@ -246,13 +246,44 @@ const StudentDashboard = () => {
                 {documents.map((doc) => (
                   <Card key={doc.id} className="card-elevated">
                     <CardContent className="p-4 flex items-start justify-between">
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <FileText className="h-4 w-4 text-primary" />
-                          <span className="font-medium text-sm">{doc.name}</span>
+                          <FileText className="h-4 w-4 text-primary shrink-0" />
+                          <span className="font-medium text-sm truncate">{doc.name}</span>
                         </div>
                         <Badge variant="secondary" className="text-xs">{documentTypes.find(t => t.value === doc.type)?.label}</Badge>
                         <p className="text-xs text-muted-foreground mt-1">{new Date(doc.uploadedAt).toLocaleDateString()}</p>
+                        {doc.fileUrl && doc.fileUrl !== '#' && (
+                          <div className="flex gap-1 mt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                const w = window.open();
+                                if (w) {
+                                  w.document.write(`<iframe src="${doc.fileUrl}" style="width:100%;height:100%;border:none;" />`);
+                                  w.document.title = doc.name;
+                                }
+                              }}
+                            >
+                              <Eye className="h-3 w-3 mr-1" /> View
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                const a = document.createElement('a');
+                                a.href = doc.fileUrl;
+                                a.download = doc.name;
+                                a.click();
+                              }}
+                            >
+                              <Download className="h-3 w-3 mr-1" /> Download
+                            </Button>
+                          </div>
+                        )}
                       </div>
                       <Button variant="ghost" size="icon" onClick={() => { deleteDocument(doc.id); toast.info('Document removed'); }}>
                         <Trash2 className="h-4 w-4 text-destructive" />
