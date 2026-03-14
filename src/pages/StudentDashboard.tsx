@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { GraduationCap, FileText, Trophy, LogOut, User, Upload, Trash2 } from 'lucide-react';
+import { GraduationCap, FileText, Trophy, LogOut, User, Upload, Trash2, Eye, Download } from 'lucide-react';
 import { Achievement, AchievementType, DocumentType, StudentDocument } from '@/types';
 import { toast } from 'sonner';
 
