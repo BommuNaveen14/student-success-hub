@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { GraduationCap, FileText, Trophy, LogOut, User, Upload, Trash2 } from 'lucide-react';
+import { GraduationCap, FileText, Trophy, LogOut, User, Upload, Trash2, Eye, Download } from 'lucide-react';
 import { Achievement, AchievementType, DocumentType, StudentDocument } from '@/types';
 import { toast } from 'sonner';
 
@@ -53,6 +53,8 @@ const StudentDashboard = () => {
   });
 
   const [docForm, setDocForm] = useState({ type: '' as DocumentType, name: '', fileUrl: '' });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (!currentUser || currentUser.role !== 'student') {
@@ -80,19 +82,42 @@ const StudentDashboard = () => {
     toast.success('Achievement added!');
   };
 
-  const handleAddDocument = (e: React.FormEvent) => {
+  const handleAddDocument = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedFile && !docForm.fileUrl) {
+      toast.error('Please select a file to upload');
+      return;
+    }
+
+    setUploading(true);
+    let fileUrl = docForm.fileUrl || '#';
+    let fileName = docForm.name || selectedFile?.name || 'Untitled';
+
+    if (selectedFile) {
+      // Convert file to base64 data URL for local storage
+      fileUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(selectedFile);
+      });
+    }
+
     const doc: StudentDocument = {
       id: crypto.randomUUID(),
       studentId: student.id,
       type: docForm.type,
-      name: docForm.name,
-      fileUrl: docForm.fileUrl || '#',
+      name: fileName,
+      fileUrl,
       uploadedAt: new Date().toISOString(),
       verified: false,
     };
     addDocument(doc);
     setDocForm({ type: '' as DocumentType, name: '', fileUrl: '' });
+    setSelectedFile(null);
+    // Reset the file input
+    const fileInput = document.getElementById('doc-file-input') as HTMLInputElement;
+    if (fileInput) fileInput.value = '';
+    setUploading(false);
     toast.success('Document uploaded!');
   };
 
@@ -172,7 +197,7 @@ const StudentDashboard = () => {
             <Card className="card-elevated">
               <CardHeader><CardTitle className="font-display text-lg"><Upload className="h-5 w-5 inline mr-2" />Upload Document</CardTitle></CardHeader>
               <CardContent>
-                <form onSubmit={handleAddDocument} className="grid sm:grid-cols-3 gap-4">
+                <form onSubmit={handleAddDocument} className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Document Type *</Label>
                     <Select value={docForm.type} onValueChange={(v) => setDocForm(p => ({ ...p, type: v as DocumentType }))}>
@@ -183,15 +208,34 @@ const StudentDashboard = () => {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Document Name *</Label>
-                    <Input value={docForm.name} onChange={(e) => setDocForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Semester 1 Marks" required />
+                    <Label>Document Name</Label>
+                    <Input value={docForm.name} onChange={(e) => setDocForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Semester 1 Marks" />
                   </div>
-                  <div className="space-y-2">
-                    <Label>File URL / Reference</Label>
-                    <Input value={docForm.fileUrl} onChange={(e) => setDocForm(p => ({ ...p, fileUrl: e.target.value }))} placeholder="Paste link or reference" />
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Upload File (PDF, Image, Document) *</Label>
+                    <Input
+                      id="doc-file-input"
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setSelectedFile(file);
+                        if (file && !docForm.name) {
+                          setDocForm(p => ({ ...p, name: file.name.replace(/\.[^/.]+$/, '') }));
+                        }
+                      }}
+                      className="cursor-pointer"
+                    />
+                    {selectedFile && (
+                      <p className="text-xs text-muted-foreground">
+                        Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
+                      </p>
+                    )}
                   </div>
-                  <div className="sm:col-span-3">
-                    <Button type="submit" disabled={!docForm.type || !docForm.name}>Upload Document</Button>
+                  <div className="sm:col-span-2">
+                    <Button type="submit" disabled={!docForm.type || !selectedFile || uploading}>
+                      {uploading ? 'Uploading...' : 'Upload Document'}
+                    </Button>
                   </div>
                 </form>
               </CardContent>
@@ -202,13 +246,44 @@ const StudentDashboard = () => {
                 {documents.map((doc) => (
                   <Card key={doc.id} className="card-elevated">
                     <CardContent className="p-4 flex items-start justify-between">
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <FileText className="h-4 w-4 text-primary" />
-                          <span className="font-medium text-sm">{doc.name}</span>
+                          <FileText className="h-4 w-4 text-primary shrink-0" />
+                          <span className="font-medium text-sm truncate">{doc.name}</span>
                         </div>
                         <Badge variant="secondary" className="text-xs">{documentTypes.find(t => t.value === doc.type)?.label}</Badge>
                         <p className="text-xs text-muted-foreground mt-1">{new Date(doc.uploadedAt).toLocaleDateString()}</p>
+                        {doc.fileUrl && doc.fileUrl !== '#' && (
+                          <div className="flex gap-1 mt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                const w = window.open();
+                                if (w) {
+                                  w.document.write(`<iframe src="${doc.fileUrl}" style="width:100%;height:100%;border:none;" />`);
+                                  w.document.title = doc.name;
+                                }
+                              }}
+                            >
+                              <Eye className="h-3 w-3 mr-1" /> View
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                const a = document.createElement('a');
+                                a.href = doc.fileUrl;
+                                a.download = doc.name;
+                                a.click();
+                              }}
+                            >
+                              <Download className="h-3 w-3 mr-1" /> Download
+                            </Button>
+                          </div>
+                        )}
                       </div>
                       <Button variant="ghost" size="icon" onClick={() => { deleteDocument(doc.id); toast.info('Document removed'); }}>
                         <Trash2 className="h-4 w-4 text-destructive" />
