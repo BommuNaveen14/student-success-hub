@@ -53,6 +53,8 @@ const StudentDashboard = () => {
   });
 
   const [docForm, setDocForm] = useState({ type: '' as DocumentType, name: '', fileUrl: '' });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (!currentUser || currentUser.role !== 'student') {
