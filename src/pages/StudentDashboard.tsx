@@ -197,7 +197,7 @@ const StudentDashboard = () => {
             <Card className="card-elevated">
               <CardHeader><CardTitle className="font-display text-lg"><Upload className="h-5 w-5 inline mr-2" />Upload Document</CardTitle></CardHeader>
               <CardContent>
-                <form onSubmit={handleAddDocument} className="grid sm:grid-cols-3 gap-4">
+                <form onSubmit={handleAddDocument} className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Document Type *</Label>
                     <Select value={docForm.type} onValueChange={(v) => setDocForm(p => ({ ...p, type: v as DocumentType }))}>
@@ -208,15 +208,34 @@ const StudentDashboard = () => {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Document Name *</Label>
-                    <Input value={docForm.name} onChange={(e) => setDocForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Semester 1 Marks" required />
+                    <Label>Document Name</Label>
+                    <Input value={docForm.name} onChange={(e) => setDocForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Semester 1 Marks" />
                   </div>
-                  <div className="space-y-2">
-                    <Label>File URL / Reference</Label>
-                    <Input value={docForm.fileUrl} onChange={(e) => setDocForm(p => ({ ...p, fileUrl: e.target.value }))} placeholder="Paste link or reference" />
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Upload File (PDF, Image, Document) *</Label>
+                    <Input
+                      id="doc-file-input"
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setSelectedFile(file);
+                        if (file && !docForm.name) {
+                          setDocForm(p => ({ ...p, name: file.name.replace(/\.[^/.]+$/, '') }));
+                        }
+                      }}
+                      className="cursor-pointer"
+                    />
+                    {selectedFile && (
+                      <p className="text-xs text-muted-foreground">
+                        Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
+                      </p>
+                    )}
                   </div>
-                  <div className="sm:col-span-3">
-                    <Button type="submit" disabled={!docForm.type || !docForm.name}>Upload Document</Button>
+                  <div className="sm:col-span-2">
+                    <Button type="submit" disabled={!docForm.type || !selectedFile || uploading}>
+                      {uploading ? 'Uploading...' : 'Upload Document'}
+                    </Button>
                   </div>
                 </form>
               </CardContent>
