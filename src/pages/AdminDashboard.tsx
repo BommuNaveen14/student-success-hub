@@ -166,6 +166,37 @@ const AdminDashboard = () => {
                         <p className="font-medium text-sm">{doc.name}</p>
                         <Badge variant="secondary" className="text-xs mt-1">{docTypeLabels[doc.type] || doc.type}</Badge>
                         <p className="text-xs text-muted-foreground mt-1">{new Date(doc.uploadedAt).toLocaleDateString()}</p>
+                        {doc.fileUrl && doc.fileUrl !== '#' && (
+                          <div className="flex gap-1 mt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                const w = window.open();
+                                if (w) {
+                                  w.document.write(`<iframe src="${doc.fileUrl}" style="width:100%;height:100%;border:none;" />`);
+                                  w.document.title = doc.name;
+                                }
+                              }}
+                            >
+                              <Eye className="h-3 w-3 mr-1" /> View
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                const a = document.createElement('a');
+                                a.href = doc.fileUrl;
+                                a.download = doc.name;
+                                a.click();
+                              }}
+                            >
+                              <Download className="h-3 w-3 mr-1" /> Download
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
