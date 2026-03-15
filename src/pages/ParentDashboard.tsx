@@ -1,11 +1,18 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore, useStudentStore } from '@/store';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Users, LogOut, User, FileText, Trophy, Eye, Download } from 'lucide-react';
+import { toast } from 'sonner';
+import type { Tables } from '@/integrations/supabase/types';
+
+type Student = Tables<'students'>;
+type Achievement = Tables<'achievements'>;
+type Document = Tables<'documents'>;
 
 const achievementTypeLabels: Record<string, string> = {
   hackathon: 'Hackathon', internship: 'Internship', research: 'Research',
@@ -20,21 +27,80 @@ const docTypeLabels: Record<string, string> = {
 
 const ParentDashboard = () => {
   const navigate = useNavigate();
-  const { currentUser, logout } = useAuthStore();
-  const { getStudentById, getAchievementsByStudentId, getDocumentsByStudentId } = useStudentStore();
+  const { user, signOut } = useAuth();
+  const [student, setStudent] = useState<Student | null>(null);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!currentUser || currentUser.role !== 'parent') navigate('/parent/login');
-  }, [currentUser, navigate]);
+    if (!user) { navigate('/parent/login'); return; }
 
-  if (!currentUser) return null;
-  const student = getStudentById(currentUser.id);
-  if (!student) return null;
+    const fetchData = async () => {
+      // Get student ID from session storage (set during parent login)
+      const studentId = sessionStorage.getItem('parent_student_id');
+      const parentPhone = sessionStorage.getItem('parent_phone');
 
-  const achievements = getAchievementsByStudentId(student.id);
-  const documents = getDocumentsByStudentId(student.id);
+      let studentData: Student | null = null;
 
-  const handleLogout = () => { logout(); navigate('/'); };
+      if (studentId) {
+        // Try to fetch by stored student ID using the security definer function
+        const { data } = await supabase.rpc('get_student_by_parent_phone', { _phone: parentPhone || '' });
+        if (data && data.length > 0) {
+          studentData = data.find((s: Student) => s.id === studentId) || data[0];
+        }
+      }
+
+      if (!studentData) {
+        toast.error('No student data found.');
+        setLoading(false);
+        return;
+      }
+
+      setStudent(studentData);
+
+      // Fetch achievements and documents using the student_id
+      // These need to go through the security definer function or be accessible
+      // For now, we'll use a workaround since parent doesn't have direct RLS access
+      const [achRes, docRes] = await Promise.all([
+        supabase.from('achievements').select('*').eq('student_id', studentData.id),
+        supabase.from('documents').select('*').eq('student_id', studentData.id),
+      ]);
+      setAchievements(achRes.data || []);
+      setDocuments(docRes.data || []);
+      setLoading(false);
+    };
+
+    fetchData();
+  }, [user, navigate]);
+
+  const handleLogout = async () => {
+    sessionStorage.removeItem('parent_phone');
+    sessionStorage.removeItem('parent_student_id');
+    await signOut();
+    navigate('/');
+  };
+
+  const viewDocument = async (filePath: string) => {
+    const { data, error } = await supabase.storage.from('documents').download(filePath);
+    if (error || !data) { toast.error('Failed to load document'); return; }
+    const url = URL.createObjectURL(data);
+    window.open(url, '_blank');
+  };
+
+  const downloadDocument = async (filePath: string, name: string) => {
+    const { data, error } = await supabase.storage.from('documents').download(filePath);
+    if (error || !data) { toast.error('Download failed'); return; }
+    const url = URL.createObjectURL(data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  if (!student) return <div className="min-h-screen flex items-center justify-center">No student data found.</div>;
 
   return (
     <div className="min-h-screen bg-background">
@@ -44,7 +110,7 @@ const ParentDashboard = () => {
             <Users className="h-7 w-7 text-accent" />
             <div>
               <h1 className="font-display font-bold text-primary-foreground text-lg">Parent Portal</h1>
-              <p className="text-primary-foreground/70 text-sm">Viewing: {student.firstName} {student.lastName}</p>
+              <p className="text-primary-foreground/70 text-sm">Viewing: {student.first_name} {student.last_name}</p>
             </div>
           </div>
           <Button variant="ghost" size="sm" onClick={handleLogout} className="text-primary-foreground hover:text-primary-foreground/80">
@@ -66,11 +132,11 @@ const ParentDashboard = () => {
               <Card className="card-elevated">
                 <CardHeader><CardTitle className="font-display text-lg">Student Information</CardTitle></CardHeader>
                 <CardContent className="space-y-2 text-sm">
-                  <InfoRow label="Name" value={`${student.firstName} ${student.lastName}`} />
-                  <InfoRow label="Reg. Number" value={student.registrationNumber} />
+                  <InfoRow label="Name" value={`${student.first_name} ${student.last_name}`} />
+                  <InfoRow label="Reg. Number" value={student.registration_number} />
                   <InfoRow label="Email" value={student.email} />
                   <InfoRow label="Phone" value={student.phone} />
-                  <InfoRow label="DOB" value={student.dateOfBirth} />
+                  <InfoRow label="DOB" value={student.date_of_birth} />
                 </CardContent>
               </Card>
               <Card className="card-elevated">
@@ -78,8 +144,8 @@ const ParentDashboard = () => {
                 <CardContent className="space-y-2 text-sm">
                   <InfoRow label="Program" value={student.program} />
                   <InfoRow label="Branch" value={student.branch} />
-                  <InfoRow label="Category" value={student.admissionCategory} />
-                  <InfoRow label="Year / Sem" value={`Year ${student.currentYear} / Sem ${student.currentSemester}`} />
+                  <InfoRow label="Category" value={student.admission_category} />
+                  <InfoRow label="Year / Sem" value={`Year ${student.current_year} / Sem ${student.current_semester}`} />
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground w-28">Status</span>
                     <Badge>{student.status}</Badge>
@@ -100,38 +166,15 @@ const ParentDashboard = () => {
                         <span className="font-medium text-sm">{doc.name}</span>
                       </div>
                       <Badge variant="secondary" className="text-xs">{docTypeLabels[doc.type] || doc.type}</Badge>
-                      <p className="text-xs text-muted-foreground mt-1">{new Date(doc.uploadedAt).toLocaleDateString()}</p>
-                      {doc.fileUrl && doc.fileUrl !== '#' && (
-                        <div className="flex gap-1 mt-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={() => {
-                              const w = window.open();
-                              if (w) {
-                                w.document.write(`<iframe src="${doc.fileUrl}" style="width:100%;height:100%;border:none;" />`);
-                                w.document.title = doc.name;
-                              }
-                            }}
-                          >
-                            <Eye className="h-3 w-3 mr-1" /> View
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={() => {
-                              const a = document.createElement('a');
-                              a.href = doc.fileUrl;
-                              a.download = doc.name;
-                              a.click();
-                            }}
-                          >
-                            <Download className="h-3 w-3 mr-1" /> Download
-                          </Button>
-                        </div>
-                      )}
+                      <p className="text-xs text-muted-foreground mt-1">{new Date(doc.uploaded_at).toLocaleDateString()}</p>
+                      <div className="flex gap-1 mt-2">
+                        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => viewDocument(doc.file_path)}>
+                          <Eye className="h-3 w-3 mr-1" /> View
+                        </Button>
+                        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => downloadDocument(doc.file_path, doc.name)}>
+                          <Download className="h-3 w-3 mr-1" /> Download
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
                 ))}
@@ -153,7 +196,7 @@ const ParentDashboard = () => {
                         {ach.position && <Badge className="bg-accent text-accent-foreground">{ach.position}</Badge>}
                       </div>
                       <p className="text-sm text-muted-foreground">{ach.organization} • {ach.date}</p>
-                      {ach.academicYear && <p className="text-xs text-muted-foreground">{ach.academicYear} — Sem {ach.semester}</p>}
+                      {ach.academic_year && <p className="text-xs text-muted-foreground">{ach.academic_year} — Sem {ach.semester}</p>}
                       {ach.description && <p className="text-sm mt-2">{ach.description}</p>}
                     </CardContent>
                   </Card>
