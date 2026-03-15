@@ -6,14 +6,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useStudentStore } from '@/store';
-import { AdmissionCategory, Student } from '@/types';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import type { Database } from '@/integrations/supabase/types';
+
+type AdmissionCategory = Database['public']['Enums']['admission_category'];
 
 const StudentRegister = () => {
   const navigate = useNavigate();
-  const registerStudent = useStudentStore((s) => s.registerStudent);
-  const getStudentByRegNo = useStudentStore((s) => s.getStudentByRegNo);
+  const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState({
     registrationNumber: '',
@@ -43,7 +44,7 @@ const StudentRegister = () => {
   const updateField = (field: string, value: string | number) =>
     setForm((prev) => ({ ...prev, [field]: value }));
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (form.password !== form.confirmPassword) {
       toast.error('Passwords do not match');
@@ -53,39 +54,68 @@ const StudentRegister = () => {
       toast.error('Password must be at least 6 characters');
       return;
     }
-    if (getStudentByRegNo(form.registrationNumber)) {
-      toast.error('A student with this registration number already exists');
+
+    setLoading(true);
+
+    // 1. Create auth user
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: form.email,
+      password: form.password,
+      options: { data: { display_name: `${form.firstName} ${form.lastName}` } },
+    });
+
+    if (authError || !authData.user) {
+      toast.error(authError?.message || 'Registration failed');
+      setLoading(false);
       return;
     }
 
-    const student: Student = {
-      id: crypto.randomUUID(),
-      registrationNumber: form.registrationNumber,
-      firstName: form.firstName,
-      lastName: form.lastName,
+    const userId = authData.user.id;
+
+    // 2. Assign student role
+    const { error: roleError } = await supabase
+      .from('user_roles')
+      .insert({ user_id: userId, role: 'student' as const });
+
+    if (roleError) {
+      toast.error('Failed to assign role: ' + roleError.message);
+      setLoading(false);
+      return;
+    }
+
+    // 3. Create student record
+    const { error: studentError } = await supabase.from('students').insert({
+      user_id: userId,
+      registration_number: form.registrationNumber,
+      first_name: form.firstName,
+      last_name: form.lastName,
       email: form.email,
       phone: form.phone,
-      dateOfBirth: form.dateOfBirth,
+      date_of_birth: form.dateOfBirth,
       gender: form.gender,
       address: form.address,
       city: form.city,
       state: form.state,
       pincode: form.pincode,
-      parentName: form.parentName,
-      parentPhone: form.parentPhone,
-      parentEmail: form.parentEmail,
-      admissionCategory: form.admissionCategory,
+      parent_name: form.parentName,
+      parent_phone: form.parentPhone,
+      parent_email: form.parentEmail || null,
+      admission_category: form.admissionCategory,
       program: form.program,
       branch: form.branch,
-      yearOfAdmission: form.yearOfAdmission,
-      currentYear: form.currentYear,
-      currentSemester: form.currentSemester,
-      password: form.password,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    };
+      year_of_admission: form.yearOfAdmission,
+      current_year: form.currentYear,
+      current_semester: form.currentSemester,
+    });
 
-    registerStudent(student);
+    if (studentError) {
+      toast.error('Failed to create student record: ' + studentError.message);
+      setLoading(false);
+      return;
+    }
+
+    // Sign out after registration (pending approval)
+    await supabase.auth.signOut();
     toast.success('Registration successful! Await admin approval.');
     navigate('/student/login');
   };
@@ -247,7 +277,9 @@ const StudentRegister = () => {
                 </div>
               </div>
 
-              <Button type="submit" className="w-full" size="lg">Register</Button>
+              <Button type="submit" className="w-full" size="lg" disabled={loading}>
+                {loading ? 'Registering...' : 'Register'}
+              </Button>
             </form>
 
             <div className="mt-4 text-center text-sm text-muted-foreground">

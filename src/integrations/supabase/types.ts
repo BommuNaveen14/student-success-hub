@@ -14,16 +14,347 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      achievements: {
+        Row: {
+          academic_year: string | null
+          certificate_url: string | null
+          created_at: string
+          date: string
+          description: string | null
+          id: string
+          organization: string
+          position: string | null
+          semester: number | null
+          student_id: string
+          title: string
+          type: Database["public"]["Enums"]["achievement_type"]
+          user_id: string
+        }
+        Insert: {
+          academic_year?: string | null
+          certificate_url?: string | null
+          created_at?: string
+          date: string
+          description?: string | null
+          id?: string
+          organization: string
+          position?: string | null
+          semester?: number | null
+          student_id: string
+          title: string
+          type: Database["public"]["Enums"]["achievement_type"]
+          user_id: string
+        }
+        Update: {
+          academic_year?: string | null
+          certificate_url?: string | null
+          created_at?: string
+          date?: string
+          description?: string | null
+          id?: string
+          organization?: string
+          position?: string | null
+          semester?: number | null
+          student_id?: string
+          title?: string
+          type?: Database["public"]["Enums"]["achievement_type"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "achievements_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      documents: {
+        Row: {
+          file_path: string
+          id: string
+          name: string
+          student_id: string
+          type: Database["public"]["Enums"]["document_type"]
+          uploaded_at: string
+          user_id: string
+          verified: boolean
+        }
+        Insert: {
+          file_path: string
+          id?: string
+          name: string
+          student_id: string
+          type: Database["public"]["Enums"]["document_type"]
+          uploaded_at?: string
+          user_id: string
+          verified?: boolean
+        }
+        Update: {
+          file_path?: string
+          id?: string
+          name?: string
+          student_id?: string
+          type?: Database["public"]["Enums"]["document_type"]
+          uploaded_at?: string
+          user_id?: string
+          verified?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documents_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      otp_records: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          otp: string
+          phone: string
+          student_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          otp: string
+          phone: string
+          student_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          otp?: string
+          phone?: string
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "otp_records_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          email: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      students: {
+        Row: {
+          address: string
+          admission_category: Database["public"]["Enums"]["admission_category"]
+          branch: string
+          city: string
+          created_at: string
+          current_semester: number
+          current_year: number
+          date_of_birth: string
+          email: string
+          first_name: string
+          gender: string
+          id: string
+          last_name: string
+          parent_email: string | null
+          parent_name: string
+          parent_phone: string
+          phone: string
+          pincode: string
+          profile_photo: string | null
+          program: string
+          registration_number: string
+          state: string
+          status: Database["public"]["Enums"]["student_status"]
+          updated_at: string
+          user_id: string
+          year_of_admission: number
+        }
+        Insert: {
+          address: string
+          admission_category: Database["public"]["Enums"]["admission_category"]
+          branch: string
+          city: string
+          created_at?: string
+          current_semester?: number
+          current_year?: number
+          date_of_birth: string
+          email: string
+          first_name: string
+          gender: string
+          id?: string
+          last_name: string
+          parent_email?: string | null
+          parent_name: string
+          parent_phone: string
+          phone: string
+          pincode: string
+          profile_photo?: string | null
+          program: string
+          registration_number: string
+          state: string
+          status?: Database["public"]["Enums"]["student_status"]
+          updated_at?: string
+          user_id: string
+          year_of_admission: number
+        }
+        Update: {
+          address?: string
+          admission_category?: Database["public"]["Enums"]["admission_category"]
+          branch?: string
+          city?: string
+          created_at?: string
+          current_semester?: number
+          current_year?: number
+          date_of_birth?: string
+          email?: string
+          first_name?: string
+          gender?: string
+          id?: string
+          last_name?: string
+          parent_email?: string | null
+          parent_name?: string
+          parent_phone?: string
+          phone?: string
+          pincode?: string
+          profile_photo?: string | null
+          program?: string
+          registration_number?: string
+          state?: string
+          status?: Database["public"]["Enums"]["student_status"]
+          updated_at?: string
+          user_id?: string
+          year_of_admission?: number
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_student_by_parent_phone: {
+        Args: { _phone: string }
+        Returns: {
+          address: string
+          admission_category: Database["public"]["Enums"]["admission_category"]
+          branch: string
+          city: string
+          created_at: string
+          current_semester: number
+          current_year: number
+          date_of_birth: string
+          email: string
+          first_name: string
+          gender: string
+          id: string
+          last_name: string
+          parent_email: string | null
+          parent_name: string
+          parent_phone: string
+          phone: string
+          pincode: string
+          profile_photo: string | null
+          program: string
+          registration_number: string
+          state: string
+          status: Database["public"]["Enums"]["student_status"]
+          updated_at: string
+          user_id: string
+          year_of_admission: number
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "students"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      achievement_type:
+        | "hackathon"
+        | "internship"
+        | "research"
+        | "technical"
+        | "cultural"
+        | "sports"
+        | "workshop"
+        | "seminar"
+        | "other"
+      admission_category:
+        | "VSAT"
+        | "EAMCET"
+        | "JEE"
+        | "Management"
+        | "Sports"
+        | "Other"
+      app_role: "admin" | "student" | "parent"
+      document_type:
+        | "mark_memo"
+        | "aadhaar"
+        | "pan"
+        | "voter_id"
+        | "apaar_abc"
+        | "other"
+      student_status: "pending" | "approved" | "rejected"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +481,36 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      achievement_type: [
+        "hackathon",
+        "internship",
+        "research",
+        "technical",
+        "cultural",
+        "sports",
+        "workshop",
+        "seminar",
+        "other",
+      ],
+      admission_category: [
+        "VSAT",
+        "EAMCET",
+        "JEE",
+        "Management",
+        "Sports",
+        "Other",
+      ],
+      app_role: ["admin", "student", "parent"],
+      document_type: [
+        "mark_memo",
+        "aadhaar",
+        "pan",
+        "voter_id",
+        "apaar_abc",
+        "other",
+      ],
+      student_status: ["pending", "approved", "rejected"],
+    },
   },
 } as const

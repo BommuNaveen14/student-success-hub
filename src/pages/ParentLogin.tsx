@@ -5,37 +5,93 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { useAuthStore, useStudentStore } from '@/store';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 const ParentLogin = () => {
   const navigate = useNavigate();
-  const login = useAuthStore((s) => s.login);
-  const { generateOTP, verifyOTP, getStudentByParentPhone } = useStudentStore();
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [generatedOtp, setGeneratedOtp] = useState('');
 
-  const handleSendOTP = (e: React.FormEvent) => {
+  const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
-    const generatedOtp = generateOTP(phone);
-    if (!generatedOtp) {
+    setLoading(true);
+
+    // Check if any approved student has this parent phone
+    const { data: students } = await supabase.rpc('get_student_by_parent_phone', { _phone: phone });
+
+    if (!students || students.length === 0) {
       toast.error('No approved student found with this parent phone number.');
+      setLoading(false);
       return;
     }
+
+    // Generate OTP locally (in production, send via SMS edge function)
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedOtp(otpCode);
     setOtpSent(true);
-    // In a real app, send via SMS. For demo, show in toast.
-    toast.success(`OTP sent! (Demo OTP: ${generatedOtp})`);
+    toast.success(`OTP sent! (Demo OTP: ${otpCode})`);
+    setLoading(false);
   };
 
-  const handleVerifyOTP = (e: React.FormEvent) => {
+  const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
-    const student = verifyOTP(phone, otp);
-    if (!student) {
-      toast.error('Invalid or expired OTP.');
+    setLoading(true);
+
+    if (otp !== generatedOtp) {
+      toast.error('Invalid OTP.');
+      setLoading(false);
       return;
     }
-    login('parent', student.id, student.parentName);
+
+    // Get the student linked to this parent phone
+    const { data: students } = await supabase.rpc('get_student_by_parent_phone', { _phone: phone });
+
+    if (!students || students.length === 0) {
+      toast.error('No student found.');
+      setLoading(false);
+      return;
+    }
+
+    const student = students[0];
+
+    // Sign in as parent using a deterministic email/password based on phone
+    // First try to sign in, if fails, create the account
+    const parentEmail = `parent_${phone.replace(/[^0-9]/g, '')}@parent.local`;
+    const parentPassword = `parent_${phone}_otp_verified`;
+
+    let { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email: parentEmail,
+      password: parentPassword,
+    });
+
+    if (signInError) {
+      // Create parent account
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: parentEmail,
+        password: parentPassword,
+        options: { data: { display_name: student.parent_name } },
+      });
+
+      if (signUpError || !signUpData.user) {
+        toast.error('Failed to create parent account.');
+        setLoading(false);
+        return;
+      }
+
+      // Assign parent role
+      await supabase.from('user_roles').insert({ user_id: signUpData.user.id, role: 'parent' as const });
+
+      signInData = signUpData as any;
+    }
+
+    // Store parent phone in session storage for dashboard lookup
+    sessionStorage.setItem('parent_phone', phone);
+    sessionStorage.setItem('parent_student_id', student.id);
+
     toast.success('Welcome!');
     navigate('/parent/dashboard');
   };
@@ -57,7 +113,9 @@ const ParentLogin = () => {
                 <Label>Parent Phone Number</Label>
                 <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91XXXXXXXXXX" required />
               </div>
-              <Button type="submit" className="w-full">Send OTP</Button>
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? 'Checking...' : 'Send OTP'}
+              </Button>
             </form>
           ) : (
             <form onSubmit={handleVerifyOTP} className="space-y-4">
@@ -65,7 +123,9 @@ const ParentLogin = () => {
                 <Label>Enter OTP</Label>
                 <Input value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="6-digit OTP" maxLength={6} required />
               </div>
-              <Button type="submit" className="w-full">Verify & Login</Button>
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? 'Verifying...' : 'Verify & Login'}
+              </Button>
               <Button type="button" variant="ghost" className="w-full" onClick={() => setOtpSent(false)}>
                 Change phone number
               </Button>

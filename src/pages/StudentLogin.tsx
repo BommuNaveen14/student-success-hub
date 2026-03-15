@@ -5,36 +5,57 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { useAuthStore, useStudentStore } from '@/store';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 const StudentLogin = () => {
   const navigate = useNavigate();
-  const login = useAuthStore((s) => s.login);
-  const getStudentByRegNo = useStudentStore((s) => s.getStudentByRegNo);
-  const [regNo, setRegNo] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const student = getStudentByRegNo(regNo);
-    if (!student) {
-      toast.error('Student not found. Please check your registration number.');
+    setLoading(true);
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) { toast.error(error.message); setLoading(false); return; }
+
+    // Verify student role
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', data.user.id)
+      .eq('role', 'student')
+      .single();
+
+    if (!roleData) {
+      await supabase.auth.signOut();
+      toast.error('No student account found for this email.');
+      setLoading(false);
       return;
     }
-    if (student.password !== password) {
-      toast.error('Invalid password.');
-      return;
-    }
-    if (student.status === 'pending') {
+
+    // Check student approval status
+    const { data: student } = await supabase
+      .from('students')
+      .select('status')
+      .eq('user_id', data.user.id)
+      .single();
+
+    if (student?.status === 'pending') {
+      await supabase.auth.signOut();
       toast.warning('Your account is pending admin approval.');
+      setLoading(false);
       return;
     }
-    if (student.status === 'rejected') {
+    if (student?.status === 'rejected') {
+      await supabase.auth.signOut();
       toast.error('Your registration has been rejected. Contact admin.');
+      setLoading(false);
       return;
     }
-    login('student', student.id, `${student.firstName} ${student.lastName}`);
+
     toast.success('Welcome back!');
     navigate('/student/dashboard');
   };
@@ -47,19 +68,21 @@ const StudentLogin = () => {
             <GraduationCap className="h-8 w-8 text-primary-foreground" />
           </div>
           <CardTitle className="font-display text-2xl">Student Login</CardTitle>
-          <CardDescription>Enter your registration number and password</CardDescription>
+          <CardDescription>Enter your email and password</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="regNo">Registration Number</Label>
-              <Input id="regNo" value={regNo} onChange={(e) => setRegNo(e.target.value)} placeholder="e.g. 21B01A0501" required />
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="student@example.com" required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
             </div>
-            <Button type="submit" className="w-full">Login</Button>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? 'Signing in...' : 'Login'}
+            </Button>
           </form>
           <div className="mt-4 text-center text-sm text-muted-foreground">
             Don't have an account?{' '}

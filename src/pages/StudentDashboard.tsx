@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore, useStudentStore } from '@/store';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,8 +11,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { GraduationCap, FileText, Trophy, LogOut, User, Upload, Trash2, Eye, Download } from 'lucide-react';
-import { Achievement, AchievementType, DocumentType, StudentDocument } from '@/types';
 import { toast } from 'sonner';
+import type { Tables } from '@/integrations/supabase/types';
+import type { Database } from '@/integrations/supabase/types';
+
+type Student = Tables<'students'>;
+type Achievement = Tables<'achievements'>;
+type Document = Tables<'documents'>;
+type AchievementType = Database['public']['Enums']['achievement_type'];
+type DocumentType = Database['public']['Enums']['document_type'];
 
 const achievementTypes: { value: AchievementType; label: string }[] = [
   { value: 'hackathon', label: 'Hackathon' },
@@ -36,106 +44,141 @@ const documentTypes: { value: DocumentType; label: string }[] = [
 
 const StudentDashboard = () => {
   const navigate = useNavigate();
-  const { currentUser, logout } = useAuthStore();
-  const {
-    getStudentById,
-    getAchievementsByStudentId,
-    getDocumentsByStudentId,
-    addAchievement,
-    deleteAchievement,
-    addDocument,
-    deleteDocument,
-  } = useStudentStore();
+  const { user, signOut } = useAuth();
+  const [student, setStudent] = useState<Student | null>(null);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [achForm, setAchForm] = useState({
     title: '', description: '', type: '' as AchievementType,
     academicYear: '', semester: 1, date: '', organization: '', position: '',
   });
 
-  const [docForm, setDocForm] = useState({ type: '' as DocumentType, name: '', fileUrl: '' });
+  const [docForm, setDocForm] = useState({ type: '' as DocumentType, name: '' });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  useEffect(() => {
-    if (!currentUser || currentUser.role !== 'student') {
-      navigate('/student/login');
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+    const { data: studentData } = await supabase.from('students').select('*').eq('user_id', user.id).single();
+    if (studentData) {
+      setStudent(studentData);
+      const [achRes, docRes] = await Promise.all([
+        supabase.from('achievements').select('*').eq('student_id', studentData.id).order('created_at', { ascending: false }),
+        supabase.from('documents').select('*').eq('student_id', studentData.id).order('uploaded_at', { ascending: false }),
+      ]);
+      setAchievements(achRes.data || []);
+      setDocuments(docRes.data || []);
     }
-  }, [currentUser, navigate]);
+    setLoading(false);
+  }, [user]);
 
-  if (!currentUser) return null;
-  const student = getStudentById(currentUser.id);
-  if (!student) return null;
+  useEffect(() => {
+    if (!user) { navigate('/student/login'); return; }
+    fetchData();
+  }, [user, navigate, fetchData]);
 
-  const achievements = getAchievementsByStudentId(student.id);
-  const documents = getDocumentsByStudentId(student.id);
+  if (loading || !student) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
-  const handleAddAchievement = (e: React.FormEvent) => {
+  const handleAddAchievement = async (e: React.FormEvent) => {
     e.preventDefault();
-    const achievement: Achievement = {
-      id: crypto.randomUUID(),
-      studentId: student.id,
-      ...achForm,
-      createdAt: new Date().toISOString(),
-    };
-    addAchievement(achievement);
+    const { error } = await supabase.from('achievements').insert({
+      student_id: student.id,
+      user_id: user!.id,
+      title: achForm.title,
+      description: achForm.description || null,
+      type: achForm.type,
+      academic_year: achForm.academicYear || null,
+      semester: achForm.semester,
+      date: achForm.date,
+      organization: achForm.organization,
+      position: achForm.position || null,
+    });
+    if (error) { toast.error(error.message); return; }
     setAchForm({ title: '', description: '', type: '' as AchievementType, academicYear: '', semester: 1, date: '', organization: '', position: '' });
     toast.success('Achievement added!');
+    fetchData();
+  };
+
+  const handleDeleteAchievement = async (id: string) => {
+    await supabase.from('achievements').delete().eq('id', id);
+    toast.info('Achievement removed');
+    fetchData();
   };
 
   const handleAddDocument = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFile && !docForm.fileUrl) {
-      toast.error('Please select a file to upload');
-      return;
-    }
-
+    if (!selectedFile) { toast.error('Please select a file'); return; }
     setUploading(true);
-    let fileUrl = docForm.fileUrl || '#';
-    let fileName = docForm.name || selectedFile?.name || 'Untitled';
 
-    if (selectedFile) {
-      // Convert file to base64 data URL for local storage
-      fileUrl = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(selectedFile);
-      });
-    }
+    const filePath = `${user!.id}/${Date.now()}_${selectedFile.name}`;
+    const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, selectedFile);
 
-    const doc: StudentDocument = {
-      id: crypto.randomUUID(),
-      studentId: student.id,
+    if (uploadError) { toast.error('Upload failed: ' + uploadError.message); setUploading(false); return; }
+
+    const { error } = await supabase.from('documents').insert({
+      student_id: student.id,
+      user_id: user!.id,
       type: docForm.type,
-      name: fileName,
-      fileUrl,
-      uploadedAt: new Date().toISOString(),
-      verified: false,
-    };
-    addDocument(doc);
-    setDocForm({ type: '' as DocumentType, name: '', fileUrl: '' });
+      name: docForm.name || selectedFile.name.replace(/\.[^/.]+$/, ''),
+      file_path: filePath,
+    });
+
+    if (error) { toast.error(error.message); setUploading(false); return; }
+    setDocForm({ type: '' as DocumentType, name: '' });
     setSelectedFile(null);
-    // Reset the file input
     const fileInput = document.getElementById('doc-file-input') as HTMLInputElement;
     if (fileInput) fileInput.value = '';
     setUploading(false);
     toast.success('Document uploaded!');
+    fetchData();
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleDeleteDocument = async (id: string, filePath: string) => {
+    await supabase.storage.from('documents').remove([filePath]);
+    await supabase.from('documents').delete().eq('id', id);
+    toast.info('Document removed');
+    fetchData();
+  };
+
+  const getDocumentUrl = (filePath: string) => {
+    const { data } = supabase.storage.from('documents').getPublicUrl(filePath);
+    return data.publicUrl;
+  };
+
+  const downloadDocument = async (filePath: string, name: string) => {
+    const { data, error } = await supabase.storage.from('documents').download(filePath);
+    if (error || !data) { toast.error('Download failed'); return; }
+    const url = URL.createObjectURL(data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const viewDocument = async (filePath: string, name: string) => {
+    const { data, error } = await supabase.storage.from('documents').download(filePath);
+    if (error || !data) { toast.error('Failed to load document'); return; }
+    const url = URL.createObjectURL(data);
+    window.open(url, '_blank');
+  };
+
+  const handleLogout = async () => {
+    await signOut();
     navigate('/');
   };
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="gradient-primary px-4 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <GraduationCap className="h-7 w-7 text-accent" />
             <div>
               <h1 className="font-display font-bold text-primary-foreground text-lg">Student Dashboard</h1>
-              <p className="text-primary-foreground/70 text-sm">{student.firstName} {student.lastName} — {student.registrationNumber}</p>
+              <p className="text-primary-foreground/70 text-sm">{student.first_name} {student.last_name} — {student.registration_number}</p>
             </div>
           </div>
           <Button variant="ghost" size="sm" onClick={handleLogout} className="text-primary-foreground hover:text-primary-foreground/80">
@@ -152,16 +195,15 @@ const StudentDashboard = () => {
             <TabsTrigger value="achievements"><Trophy className="h-4 w-4 mr-2" /> Achievements</TabsTrigger>
           </TabsList>
 
-          {/* Profile Tab */}
           <TabsContent value="profile">
             <div className="grid md:grid-cols-2 gap-4">
               <Card className="card-elevated">
                 <CardHeader><CardTitle className="font-display text-lg">Personal Information</CardTitle></CardHeader>
                 <CardContent className="space-y-2 text-sm">
-                  <InfoRow label="Name" value={`${student.firstName} ${student.lastName}`} />
+                  <InfoRow label="Name" value={`${student.first_name} ${student.last_name}`} />
                   <InfoRow label="Email" value={student.email} />
                   <InfoRow label="Phone" value={student.phone} />
-                  <InfoRow label="Date of Birth" value={student.dateOfBirth} />
+                  <InfoRow label="Date of Birth" value={student.date_of_birth} />
                   <InfoRow label="Gender" value={student.gender} />
                   <InfoRow label="Address" value={`${student.address}, ${student.city}, ${student.state} - ${student.pincode}`} />
                 </CardContent>
@@ -169,12 +211,12 @@ const StudentDashboard = () => {
               <Card className="card-elevated">
                 <CardHeader><CardTitle className="font-display text-lg">Academic Information</CardTitle></CardHeader>
                 <CardContent className="space-y-2 text-sm">
-                  <InfoRow label="Reg. Number" value={student.registrationNumber} />
+                  <InfoRow label="Reg. Number" value={student.registration_number} />
                   <InfoRow label="Program" value={student.program} />
                   <InfoRow label="Branch" value={student.branch} />
-                  <InfoRow label="Admission Category" value={student.admissionCategory} />
-                  <InfoRow label="Year of Admission" value={String(student.yearOfAdmission)} />
-                  <InfoRow label="Current Year / Semester" value={`Year ${student.currentYear} / Sem ${student.currentSemester}`} />
+                  <InfoRow label="Admission Category" value={student.admission_category} />
+                  <InfoRow label="Year of Admission" value={String(student.year_of_admission)} />
+                  <InfoRow label="Current Year / Semester" value={`Year ${student.current_year} / Sem ${student.current_semester}`} />
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground w-36">Status</span>
                     <Badge variant={student.status === 'approved' ? 'default' : 'secondary'}>{student.status}</Badge>
@@ -184,15 +226,14 @@ const StudentDashboard = () => {
               <Card className="card-elevated">
                 <CardHeader><CardTitle className="font-display text-lg">Parent / Guardian</CardTitle></CardHeader>
                 <CardContent className="space-y-2 text-sm">
-                  <InfoRow label="Name" value={student.parentName} />
-                  <InfoRow label="Phone" value={student.parentPhone} />
-                  <InfoRow label="Email" value={student.parentEmail || 'N/A'} />
+                  <InfoRow label="Name" value={student.parent_name} />
+                  <InfoRow label="Phone" value={student.parent_phone} />
+                  <InfoRow label="Email" value={student.parent_email || 'N/A'} />
                 </CardContent>
               </Card>
             </div>
           </TabsContent>
 
-          {/* Documents Tab */}
           <TabsContent value="documents" className="space-y-4">
             <Card className="card-elevated">
               <CardHeader><CardTitle className="font-display text-lg"><Upload className="h-5 w-5 inline mr-2" />Upload Document</CardTitle></CardHeader>
@@ -212,7 +253,7 @@ const StudentDashboard = () => {
                     <Input value={docForm.name} onChange={(e) => setDocForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Semester 1 Marks" />
                   </div>
                   <div className="space-y-2 sm:col-span-2">
-                    <Label>Upload File (PDF, Image, Document) *</Label>
+                    <Label>Upload File *</Label>
                     <Input
                       id="doc-file-input"
                       type="file"
@@ -252,40 +293,17 @@ const StudentDashboard = () => {
                           <span className="font-medium text-sm truncate">{doc.name}</span>
                         </div>
                         <Badge variant="secondary" className="text-xs">{documentTypes.find(t => t.value === doc.type)?.label}</Badge>
-                        <p className="text-xs text-muted-foreground mt-1">{new Date(doc.uploadedAt).toLocaleDateString()}</p>
-                        {doc.fileUrl && doc.fileUrl !== '#' && (
-                          <div className="flex gap-1 mt-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-7 text-xs"
-                              onClick={() => {
-                                const w = window.open();
-                                if (w) {
-                                  w.document.write(`<iframe src="${doc.fileUrl}" style="width:100%;height:100%;border:none;" />`);
-                                  w.document.title = doc.name;
-                                }
-                              }}
-                            >
-                              <Eye className="h-3 w-3 mr-1" /> View
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-7 text-xs"
-                              onClick={() => {
-                                const a = document.createElement('a');
-                                a.href = doc.fileUrl;
-                                a.download = doc.name;
-                                a.click();
-                              }}
-                            >
-                              <Download className="h-3 w-3 mr-1" /> Download
-                            </Button>
-                          </div>
-                        )}
+                        <p className="text-xs text-muted-foreground mt-1">{new Date(doc.uploaded_at).toLocaleDateString()}</p>
+                        <div className="flex gap-1 mt-2">
+                          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => viewDocument(doc.file_path, doc.name)}>
+                            <Eye className="h-3 w-3 mr-1" /> View
+                          </Button>
+                          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => downloadDocument(doc.file_path, doc.name)}>
+                            <Download className="h-3 w-3 mr-1" /> Download
+                          </Button>
+                        </div>
                       </div>
-                      <Button variant="ghost" size="icon" onClick={() => { deleteDocument(doc.id); toast.info('Document removed'); }}>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteDocument(doc.id, doc.file_path)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </CardContent>
@@ -297,7 +315,6 @@ const StudentDashboard = () => {
             )}
           </TabsContent>
 
-          {/* Achievements Tab */}
           <TabsContent value="achievements" className="space-y-4">
             <Card className="card-elevated">
               <CardHeader><CardTitle className="font-display text-lg"><Trophy className="h-5 w-5 inline mr-2" />Add Achievement</CardTitle></CardHeader>
@@ -364,10 +381,10 @@ const StudentDashboard = () => {
                           {ach.position && <Badge className="bg-accent text-accent-foreground">{ach.position}</Badge>}
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">{ach.organization} • {ach.date}</p>
-                        {ach.academicYear && <p className="text-xs text-muted-foreground">{ach.academicYear} — Sem {ach.semester}</p>}
+                        {ach.academic_year && <p className="text-xs text-muted-foreground">{ach.academic_year} — Sem {ach.semester}</p>}
                         {ach.description && <p className="text-sm mt-2">{ach.description}</p>}
                       </div>
-                      <Button variant="ghost" size="icon" onClick={() => { deleteAchievement(ach.id); toast.info('Achievement removed'); }}>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteAchievement(ach.id)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </CardContent>
